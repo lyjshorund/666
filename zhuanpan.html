@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>电竞角色抽奖转盘</title>
+    <style>
+        :root {
+            --bg-color: #0b0c10;
+            --panel-color: #1f2833;
+            --neon-blue: #45a29e;
+            --neon-pink: #ff4b2b;
+            --text-color: #c5c6c7;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px rgba(69, 162, 158, 0.8);
+            color: #fff;
+        }
+
+        .wheel-container {
+            position: relative;
+            width: 90vw;
+            max-width: 400px;
+            aspect-ratio: 1/1;
+            margin-bottom: 30px;
+        }
+
+        /* 外部发光边框 */
+        .wheel-border {
+            position: absolute;
+            top: -10px; left: -10px; right: -10px; bottom: -10px;
+            border-radius: 50%;
+            border: 4px solid var(--neon-blue);
+            box-shadow: 0 0 20px var(--neon-blue), inset 0 0 20px rgba(69, 162, 158, 0.3);
+            pointer-events: none;
+        }
+
+        /* 指针 */
+        .pointer {
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 15px solid transparent;
+            border-right: 15px solid transparent;
+            border-top: 30px solid var(--neon-pink);
+            filter: drop-shadow(0 0 8px var(--neon-pink));
+            z-index: 10;
+        }
+
+        /* 转盘 Canvas */
+        #wheelCanvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            /* 核心动画：使用贝塞尔曲线模拟真实的物理减速效果 */
+            transition: transform 4.5s cubic-bezier(0.15, 0.85, 0.25, 1);
+            box-shadow: 0 0 30px rgba(0,0,0,0.8);
+        }
+
+        /* 抽奖按钮 */
+        .spin-btn {
+            padding: 15px 40px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #fff;
+            background: linear-gradient(45deg, #ff4b2b, #ff416c);
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            letter-spacing: 2px;
+            box-shadow: 0 5px 15px rgba(255, 75, 43, 0.4);
+            transition: all 0.3s ease;
+            outline: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .spin-btn:active {
+            transform: scale(0.95);
+            box-shadow: 0 2px 5px rgba(255, 75, 43, 0.4);
+        }
+
+        .spin-btn:disabled {
+            background: #555;
+            box-shadow: none;
+            cursor: not-allowed;
+        }
+
+        /* 结果弹窗 */
+        .result-modal {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .result-modal.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .result-card {
+            background: var(--panel-color);
+            border: 2px solid var(--neon-blue);
+            border-radius: 15px;
+            padding: 30px 50px;
+            text-align: center;
+            box-shadow: 0 0 30px rgba(69, 162, 158, 0.5);
+            transform: scale(0.8);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .result-modal.show .result-card {
+            transform: scale(1);
+        }
+
+        .result-title {
+            font-size: 16px;
+            color: #888;
+            margin-bottom: 10px;
+        }
+
+        .result-prize {
+            font-size: 28px;
+            font-weight: bold;
+            color: #fff;
+            text-shadow: 0 0 10px var(--neon-pink);
+            margin-bottom: 20px;
+        }
+
+        .close-btn {
+            padding: 8px 25px;
+            background: transparent;
+            border: 1px solid var(--neon-blue);
+            color: var(--neon-blue);
+            border-radius: 20px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>🎯 英雄/角色抽取</h1>
+
+    <div class="wheel-container">
+        <div class="wheel-border"></div>
+        <div class="pointer"></div>
+        <!-- 设置较大的宽高以保证在手机高分屏上的清晰度 -->
+        <canvas id="wheelCanvas" width="800" height="800"></canvas>
+    </div>
+
+    <button class="spin-btn" id="spinBtn">开始抽取</button>
+
+    <!-- 结果弹窗 -->
+    <div class="result-modal" id="resultModal">
+        <div class="result-card">
+            <div class="result-title">🎉 恭喜获得 🎉</div>
+            <div class="result-prize" id="prizeName">---</div>
+            <button class="close-btn" id="closeBtn">确认</button>
+        </div>
+    </div>
+
+    <script>
+        // 1. 配置奖品数据 (18个)
+        const prizes = [
+            "指挥官", "火箭小子", "次元极客", "战地医师", "爆破上尉", "闪电尖兵",
+            "绚彩机师", "幻影猎手", "时空魅影", "雷枪少年", "孤胆枪手", "爆裂萌兔",
+            "天籁之音", "源代码", "绝对零度", "深海之影", "海洋之心", "涂鸦风暴"
+        ];
+
+        const canvas = document.getElementById('wheelCanvas');
+        const ctx = canvas.getContext('2d');
+        const spinBtn = document.getElementById('spinBtn');
+        const resultModal = document.getElementById('resultModal');
+        const prizeName = document.getElementById('prizeName');
+        const closeBtn = document.getElementById('closeBtn');
+
+        const num = prizes.length; // 18
+        const arc = (2 * Math.PI) / num; // 每个扇区的弧度
+        const radius = canvas.width / 2; // 400
+        
+        let currentAngle = 0; // 记录当前旋转的总角度
+        let isSpinning = false;
+
+        // 2. 绘制转盘 (仅初始化时绘制一次，利用CSS旋转，性能极佳)
+        function drawWheel() {
+            // 电竞风配色：深蓝灰 与 暗紫 交替
+            const colors = ['#1A2980', '#26D0CE']; 
+            // 替换为更沉稳的电竞色
+            const bgColors = ['#141E30', '#243B55']; 
+
+            for (let i = 0; i < num; i++) {
+                const startAngle = -Math.PI / 2 - arc / 2 + i * arc; // 让0号奖品中心对准正上方
+                const endAngle = startAngle + arc;
+
+                // 绘制扇形
+                ctx.beginPath();
+                ctx.moveTo(radius, radius);
+                ctx.arc(radius, radius, radius, startAngle, endAngle);
+                ctx.closePath();
+                
+                // 填充颜色
+                ctx.fillStyle = bgColors[i % 2];
+                ctx.fill();
+
+                // 绘制边框线
+                ctx.strokeStyle = '#45a29e';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // 绘制文字
+                ctx.save();
+                ctx.translate(radius, radius);
+                ctx.rotate(startAngle + arc / 2);
+                
+                ctx.textAlign = 'right';
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 28px "PingFang SC", "Microsoft YaHei", sans-serif';
+                ctx.shadowColor = 'rgba(0,0,0,0.8)';
+                ctx.shadowBlur = 4;
+                
+                // 文字位置 (靠近外边缘)
+                ctx.fillText(prizes[i], radius - 30, 10);
+                ctx.restore();
+            }
+
+            // 绘制中心圆
+            ctx.beginPath();
+            ctx.arc(radius, radius, 40, 0, 2 * Math.PI);
+            ctx.fillStyle = '#0b0c10';
+            ctx.fill();
+            ctx.strokeStyle = '#45a29e';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+        }
+
+        // 3. 抽奖逻辑
+        function startSpin() {
+            if (isSpinning) return;
+            isSpinning = true;
+            spinBtn.disabled = true;
+            spinBtn.textContent = "抽取中...";
+
+            // 随机获取中奖索引
+            const prizeIndex = Math.floor(Math.random() * num);
+            const prizeAngleDeg = 360 / num; // 20度
+
+            // 计算目标角度：
+            // 基础圈数 (5圈) + 让目标奖品停在正上方所需的角度
+            const extraDegrees = 360 - (prizeIndex * prizeAngleDeg);
+            const baseSpins = 360 * 5; 
+            
+            // 减去当前角度模360，保证每次都是顺时针叠加旋转
+            const targetAngle = currentAngle + baseSpins + extraDegrees - (currentAngle % 360);
+            
+            currentAngle = targetAngle;
+
+            // 利用 CSS3 transform 进行旋转 (硬件加速，极其流畅)
+            canvas.style.transform = `rotate(${currentAngle}deg)`;
+
+            // 等待动画结束 (与 CSS transition 时间 4.5s 保持一致)
+            setTimeout(() => {
+                isSpinning = false;
+                spinBtn.disabled = false;
+                spinBtn.textContent = "开始抽取";
+                showResult(prizes[prizeIndex]);
+            }, 4600);
+        }
+
+        // 4. 结果展示
+        function showResult(name) {
+            prizeName.textContent = name;
+            resultModal.classList.add('show');
+        }
+
+        function hideResult() {
+            resultModal.classList.remove('show');
+        }
+
+        // 5. 事件绑定
+        spinBtn.addEventListener('click', startSpin);
+        closeBtn.addEventListener('click', hideResult);
+
+        // 初始化
+        drawWheel();
+    </script>
+</body>
+</html>
